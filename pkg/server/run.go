@@ -14,7 +14,7 @@ const (
 
 func Run() error {
 	logger := logger.New()
-	logger.Println("initialized the logger")
+	logger.Info("initialized the logger")
 
 	listener := listeners.NewNats()
 	formatter := formatters.New()

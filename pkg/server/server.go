@@ -2,12 +2,11 @@ package server
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 )
 
 type srv struct {
-	logger *log.Logger
+	logger ILogger
 
 	listener  IListener
 	formatter IFormatter
@@ -16,7 +15,7 @@ type srv struct {
 	mux *http.ServeMux
 }
 
-func new(logger *log.Logger, l IListener, f IFormatter, p IPresenter) *srv {
+func new(logger ILogger, l IListener, f IFormatter, p IPresenter) *srv {
 
 	m := http.NewServeMux()
 
@@ -32,12 +31,13 @@ func new(logger *log.Logger, l IListener, f IFormatter, p IPresenter) *srv {
 
 func (s *srv) serve(addr string, port int) error {
 	fullAddr := fmt.Sprintf("%s:%d", addr, port)
-	s.logger.Printf("start serving at: %s", fullAddr)
+	s.logger.Info("start serving at: %s", fullAddr)
 	err := http.ListenAndServe(fullAddr, s.mux)
 	return err
 }
 
 func (s *srv) ping(w http.ResponseWriter, r *http.Request) {
+	s.logger.Debug("HTTP %s %s", r.Method, r.URL)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("pong\n"))
 }
