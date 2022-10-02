@@ -10,13 +10,25 @@ import (
 const (
 	ADDR = "localhost"
 	PORT = 8080
+
+	NATS_ADDR = "localhost"
+	NATS_PORT = 4222
 )
 
 func Run() error {
 	logger := logger.New()
 	logger.Info("initialized the logger")
 
-	listener := listeners.NewNats()
+	listenerConf := listeners.NatsConf{
+		Addr: ADDR,
+		Port: NATS_PORT,
+	}
+	listener := listeners.NewNats(logger, listenerConf)
+	if err := listener.Connect(); err != nil {
+		return err
+	}
+	defer listener.Disconnect()
+
 	formatter := formatters.New()
 	presenter := presenters.NewStdout()
 
