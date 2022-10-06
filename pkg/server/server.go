@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -40,4 +41,46 @@ func (s *srv) ping(w http.ResponseWriter, r *http.Request) {
 	s.logger.Debug("HTTP %s %s", r.Method, r.URL)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("pong\n"))
+}
+
+func (s *srv) startListening(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	s.logger.Debug("HTTP %s %s", r.Method, r.URL)
+
+	var startErr = make(chan error)
+	go s.listener.StartListening(startErr)
+
+	if err := <-startErr; err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Add("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(errResp{
+			Status: http.StatusInternalServerError,
+			Reason: err.Error(),
+		})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *srv) stopListening(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	s.logger.Debug("HTTP %s %s", r.Method, r.URL)
+
+	err := s.listener.StopListening()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Add("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(errResp{
+			Status: http.StatusInternalServerError,
+			Reason: err.Error(),
+		})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
