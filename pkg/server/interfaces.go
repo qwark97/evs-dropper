@@ -1,13 +1,11 @@
 package server
 
 type IListener interface {
-	StartListening()
-	StopListening()
+	StartListening() error
+	StopListening() error
 	DumpInfo()
 	StreamTraffic()
 	CleanData()
-	Connect() error
-	Disconnect()
 }
 
 type IFormatter interface {

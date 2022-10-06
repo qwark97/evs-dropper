@@ -50,10 +50,7 @@ func (s *srv) startListening(w http.ResponseWriter, r *http.Request) {
 	}
 	s.logger.Debug("HTTP %s %s", r.Method, r.URL)
 
-	var startErr = make(chan error)
-	go s.listener.StartListening(startErr)
-
-	if err := <-startErr; err != nil {
+	if err := s.listener.StartListening(); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Header().Add("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(errResp{

@@ -1,20 +1,34 @@
 package listeners
 
 import (
-	"context"
+	"errors"
 	"fmt"
-	"time"
+	"sync"
 
 	"github.com/nats-io/nats.go"
+)
+
+const (
+	NATS_CH_BUFF         = 10
+	SUBSCRIPTION_PATTERN = ">"
+)
+
+var (
+	errListeningAlreadyOn  = errors.New("listening already on")
+	errListeningAlreadyOff = errors.New("listening already off")
 )
 
 type Nats struct {
 	logger ILogger
 	conf   NatsConf
 
-	conn              *nats.Conn
-	natsConnCtx       context.Context
-	natsConnCtxCancel context.CancelFunc
+	conn *nats.Conn
+
+	eventsChan   chan *nats.Msg
+	subscription *nats.Subscription
+
+	isListeningState     bool
+	listeningSwitchMutex *sync.Mutex
 }
 
 type NatsConf struct {
@@ -22,11 +36,39 @@ type NatsConf struct {
 	Port int
 }
 
-func NewNats(logger ILogger, conf NatsConf) *Nats {
-	return &Nats{
-		logger: logger,
-		conf:   conf,
+func (n *Nats) setListeningOn() error {
+	n.listeningSwitchMutex.Lock()
+	defer n.listeningSwitchMutex.Unlock()
+	if n.isListeningState {
+		return errListeningAlreadyOn
 	}
+	n.isListeningState = true
+	return nil
+}
+
+func (n *Nats) setListeningOff() error {
+	n.listeningSwitchMutex.Lock()
+	defer n.listeningSwitchMutex.Unlock()
+	if !n.isListeningState {
+		return errListeningAlreadyOff
+	}
+	n.isListeningState = false
+	return nil
+}
+
+func msgHandler(msg *nats.Msg) {
+	fmt.Println(string(msg.Data))
+}
+
+func NewNats(logger ILogger, conf NatsConf) *Nats {
+	eventsChan := make(chan *nats.Msg, NATS_CH_BUFF)
+	n := &Nats{
+		logger:               logger,
+		conf:                 conf,
+		eventsChan:           eventsChan,
+		listeningSwitchMutex: new(sync.Mutex),
+	}
+	return n
 }
 
 func (n *Nats) Connect() error {
@@ -37,41 +79,43 @@ func (n *Nats) Connect() error {
 		return err
 	}
 	n.conn = conn
-	n.natsConnCtx, n.natsConnCtxCancel = context.WithCancel(context.Background())
-	go n.monitorConnection(n.natsConnCtx)
 	n.logger.Info("connected to the NATS at: %s", connStr)
 	return nil
 }
 
 func (n *Nats) Disconnect() {
-	defer n.natsConnCtxCancel()
 	if n.conn != nil {
 		n.conn.Close()
 		n.logger.Info("disconnected from the NATS")
 	}
 }
 
-func (n *Nats) monitorConnection(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			n.logger.Debug("NATS connection monitoring stopped")
-			return
-		default:
-			if !n.conn.IsConnected() {
-				n.logger.Error("connection to the NATS is unavailable")
-			}
-			time.Sleep(1 * time.Second)
-		}
+func (n *Nats) StartListening() error {
+	if err := n.setListeningOn(); err != nil {
+		return nil // deliberately do not return an error
 	}
+	s, err := n.conn.Subscribe(SUBSCRIPTION_PATTERN, msgHandler)
+	if err != nil {
+		return err
+	}
+	n.subscription = s
+	return nil
 }
 
-func (n *Nats) StartListening() {
-	panic("not implemented") // TODO: Implement
-}
+func (n *Nats) StopListening() error {
+	if err := n.setListeningOff(); err != nil {
+		return nil // deliberately do not return an error
+	}
+	defer func() {
+		n.subscription = nil
+	}()
 
-func (n *Nats) StopListening() {
-	panic("not implemented") // TODO: Implement
+	err := n.subscription.Unsubscribe()
+	if err != nil {
+		n.logger.Error(err.Error())
+	}
+
+	return nil
 }
 
 func (n *Nats) DumpInfo() {
